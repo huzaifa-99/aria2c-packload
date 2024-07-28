@@ -44,6 +44,12 @@ if [ ! -f "$DOWNLOAD_LINKS_FILE" ]; then
     exit 1
 fi
 
+# validate aria2c command
+if ! command -v "aria2c" &> /dev/null; then
+    log "aria2c is not installed."
+    exit 1
+fi
+
 # download individual link content with aria2c
 while true; do
     # read download directory size (in mbs)
