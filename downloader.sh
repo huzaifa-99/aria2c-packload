@@ -3,6 +3,8 @@
 LOG_FILE="$(pwd)/logs.txt" # both aria2c and script logs are added in this file
 DOWNLOAD_DIR="$(pwd)/downloads"
 DOWNLOAD_LINKS_FILE="$(pwd)/download_links.txt"
+BAD_LINKS_FILE="$(pwd)/bad_links.txt"
+TIMEOUT_WHEN_TORRENT_DOWNLOAD_SPEED_0=600 # ~ 10 minutes
 MAX_DOWNLOAD_DIR_STORAGE_SIZE_IN_MBS=20000 # ~ 20 gbs
 
 # logger function
@@ -59,7 +61,7 @@ while true; do
         exit 1
     fi
 
-    # read the first download link
+    # read the first download links file
     DOWNLOAD_LINK=$(head -n 1 "$DOWNLOAD_LINKS_FILE")
 
     # exit if nothing to download
@@ -70,15 +72,23 @@ while true; do
 
     # run ariac in background to download
     log "downloading linked media: $DOWNLOAD_LINK"
-    aria2c --seed-time=0 --dir="$DOWNLOAD_DIR" "$DOWNLOAD_LINK" >> "$LOG_FILE" 2>&1 & # it will stop once download is completed
+    aria2c --seed-time=0 --bt-stop-timeout=$TIMEOUT_WHEN_TORRENT_DOWNLOAD_SPEED_0 --dir="$DOWNLOAD_DIR" "$DOWNLOAD_LINK" >> "$LOG_FILE" 2>&1 & # it will stop once download is completed
     ARIA2_PID=$!
     log "aria2c process (PID: $ARIA2_PID) is downloading in background"
 
     # await aria2c to finish downloading before moving to the next download link
     wait "$ARIA2_PID"
-    log "download complete: $DOWNLOAD_DIR"
+    ARIA2_EXIT_CODE=$?
+    if [ $ARIA2_EXIT_CODE -eq 0 ]; then
+        # no error, download completed
+        log "download complete: $DOWNLOAD_DIR"
+    else
+        # download error, add download link to bad links file
+        log "download failed: $DOWNLOAD_DIR - aria2c exit code: $ARIA2_EXIT_CODE - adding download link to bad links file"
+        echo "$DOWNLOAD_LINK" >> "$BAD_LINKS_FILE"
+    fi
 
-    # remove the download link from links file
-    log "removing download link from file: $DOWNLOAD_LINKS_FILE"
+    # remove the download link from download links file
+    log "removing download link from download links file: $DOWNLOAD_LINKS_FILE"
     tail -n +2 "$DOWNLOAD_LINKS_FILE" > "$DOWNLOAD_LINKS_FILE.tmp" && mv "$DOWNLOAD_LINKS_FILE.tmp" "$DOWNLOAD_LINKS_FILE"
 done
